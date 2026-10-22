@@ -1,4 +1,6 @@
 import {buildEnvelope, findFaultMessage, parseEnvelope, TerminalFaultError} from "../terminal/soap";
+import type {ShipmentLookupDetails} from "../terminal/shipmentLookup";
+import type {ConfigurationRevision, SubstituteCandidate, SupplierConfiguration, SupplierConfigurationUpdate} from "../terminal/supplierConfiguration";
 import type {DeviceInformation, ScanItem, ScanMode, ScanOptions, TerminalResult} from "../terminal/types";
 
 export type Wrapped<T> = {value: T} | null;
@@ -29,7 +31,7 @@ export type DevicePairResponse = {
 };
 
 export class ApiError extends Error {
-    constructor(message: string, readonly status: number) {
+    constructor(message: string, readonly status: number, readonly details?: unknown) {
         super(message);
     }
 }
@@ -51,6 +53,14 @@ export const normalizeServerUrl = (value: string) => {
         return trimmed;
     }
     return /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+};
+
+const parseDetails = (body: string): unknown => {
+    try {
+        return JSON.parse(body);
+    } catch {
+        return undefined;
+    }
 };
 
 const extractMessage = (body: string, status: number): string => {
@@ -140,7 +150,7 @@ export class ManagerClient {
                 return this.request(method, path, {...options, retried: true});
             }
         }
-        throw new ApiError(extractMessage(body, response.status), response.status);
+        throw new ApiError(extractMessage(body, response.status), response.status, parseDetails(body));
     }
 
     private async refreshSession(): Promise<boolean> {
@@ -193,6 +203,39 @@ export class ManagerClient {
             headers: {"Content-Type": "application/json"},
         });
         return JSON.parse(body) as DevicePairResponse;
+    }
+
+    async shipmentByTrackingNumber(trackingNumber: string): Promise<ShipmentLookupDetails> {
+        const path = `/shipments/tracking-numbers/${encodeURIComponent(trackingNumber)}/control-center`;
+        return JSON.parse(await this.request("GET", path)) as ShipmentLookupDetails;
+    }
+
+    async myConfiguration(): Promise<SupplierConfiguration> {
+        return JSON.parse(await this.request("GET", "/suppliers/me/configuration")) as SupplierConfiguration;
+    }
+
+    async updateMyConfiguration(update: SupplierConfigurationUpdate): Promise<SupplierConfiguration> {
+        const body = await this.request("PUT", "/suppliers/me/configuration", {
+            body: JSON.stringify(update),
+            headers: {"Content-Type": "application/json"},
+        });
+        return JSON.parse(body) as SupplierConfiguration;
+    }
+
+    async resetMyConfiguration(version: number | null): Promise<SupplierConfiguration> {
+        const body = await this.request("POST", "/suppliers/me/configuration/reset", {
+            body: JSON.stringify({version}),
+            headers: {"Content-Type": "application/json"},
+        });
+        return JSON.parse(body) as SupplierConfiguration;
+    }
+
+    async myConfigurationHistory(): Promise<ConfigurationRevision[]> {
+        return JSON.parse(await this.request("GET", "/suppliers/me/configuration/history")) as ConfigurationRevision[];
+    }
+
+    async substituteCandidates(): Promise<SubstituteCandidate[]> {
+        return JSON.parse(await this.request("GET", "/suppliers/me/configuration/substitute-candidates")) as SubstituteCandidate[];
     }
 
     async sendScans(mode: ScanMode,

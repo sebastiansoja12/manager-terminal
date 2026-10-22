@@ -5,7 +5,7 @@ import {useTerminal} from "../state/TerminalContext";
 import {colors} from "../ui/theme";
 
 export default function Index() {
-    const {ready, user, pairKey} = useTerminal();
+    const {ready, user} = useTerminal();
 
     if (!ready) {
         return (
@@ -17,8 +17,5 @@ export default function Index() {
     if (!user) {
         return <Redirect href="/login"/>;
     }
-    if (!pairKey) {
-        return <Redirect href="/device"/>;
-    }
-    return <Redirect href="/scanner"/>;
+    return <Redirect href="/home"/>;
 }

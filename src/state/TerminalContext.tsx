@@ -1,7 +1,8 @@
 import Constants from "expo-constants";
 import React, {createContext, useCallback, useContext, useEffect, useMemo, useRef, useState} from "react";
-import {CurrentUser, ManagerClient, ManagerDevice, normalizeServerUrl} from "../api/client";
+import {ApiError, CurrentUser, ManagerClient, ManagerDevice, normalizeServerUrl} from "../api/client";
 import {isNumericShipmentId, modeIsSingleScan, modeRequiresShipmentId} from "../terminal/soap";
+import type {SupplierConfiguration} from "../terminal/supplierConfiguration";
 import type {DeviceInformation, HistoryEntry, ScanItem, ScanMode, ScanOptions, TerminalResult} from "../terminal/types";
 import {readJson, readSecret, writeJson, writeSecret} from "./storage";
 
@@ -28,6 +29,7 @@ const KEYS = {
     pending: "terminal.pending",
     history: "terminal.history",
     options: "terminal.options",
+    supplierConfiguration: "terminal.supplierConfiguration",
 };
 
 export const APP_VERSION = Constants.expoConfig?.version || "1.0.0";
@@ -42,6 +44,7 @@ type TerminalState = {
     pending: PendingScans;
     history: HistoryEntry[];
     options: ScanOptions;
+    supplierConfiguration: SupplierConfiguration | null;
     login: (serverUrl: string, username: string, password: string) => Promise<void>;
     logout: () => Promise<void>;
     pair: (device: ManagerDevice, externalSystemId: string) => Promise<void>;
@@ -53,6 +56,7 @@ type TerminalState = {
     setOptions: (options: ScanOptions) => void;
     send: (mode: ScanMode) => Promise<TerminalResult>;
     clearHistory: () => void;
+    storeSupplierConfiguration: (configuration: SupplierConfiguration) => void;
 };
 
 const TerminalContext = createContext<TerminalState | null>(null);
@@ -75,13 +79,14 @@ export function TerminalProvider({children}: {children: React.ReactNode}) {
     const [pending, setPending] = useState<PendingScans>(EMPTY_PENDING);
     const [history, setHistory] = useState<HistoryEntry[]>([]);
     const [options, setOptionsState] = useState<ScanOptions>(DEFAULT_OPTIONS);
+    const [supplierConfiguration, setSupplierConfiguration] = useState<SupplierConfiguration | null>(null);
     const pendingRef = useRef(pending);
 
     const client = useMemo(() => (serverUrl ? new ManagerClient(serverUrl) : null), [serverUrl]);
 
     useEffect(() => {
         (async () => {
-            const [storedUrl, storedUser, storedDevice, storedPairKey, storedPending, storedHistory, storedOptions] = await Promise.all([
+            const [storedUrl, storedUser, storedDevice, storedPairKey, storedPending, storedHistory, storedOptions, storedConfiguration] = await Promise.all([
                 readJson<string>(KEYS.serverUrl, ""),
                 readJson<CurrentUser | null>(KEYS.user, null),
                 readJson<PairedDevice | null>(KEYS.device, null),
@@ -89,6 +94,7 @@ export function TerminalProvider({children}: {children: React.ReactNode}) {
                 readJson<PendingScans>(KEYS.pending, EMPTY_PENDING),
                 readJson<HistoryEntry[]>(KEYS.history, []),
                 readJson<ScanOptions>(KEYS.options, DEFAULT_OPTIONS),
+                readJson<SupplierConfiguration | null>(KEYS.supplierConfiguration, null),
             ]);
             setServerUrl(storedUrl);
             setUser(storedUser);
@@ -97,6 +103,7 @@ export function TerminalProvider({children}: {children: React.ReactNode}) {
             setPending({...EMPTY_PENDING, ...storedPending});
             setHistory(storedHistory);
             setOptionsState({...DEFAULT_OPTIONS, ...storedOptions});
+            setSupplierConfiguration(storedConfiguration);
             setReady(true);
         })();
     }, []);
@@ -123,12 +130,31 @@ export function TerminalProvider({children}: {children: React.ReactNode}) {
         await Promise.all([writeJson(KEYS.device, null), writeSecret(KEYS.pairKey, null)]);
     }, []);
 
+    const storeSupplierConfiguration = useCallback((configuration: SupplierConfiguration | null) => {
+        setSupplierConfiguration(configuration);
+        writeJson(KEYS.supplierConfiguration, configuration);
+    }, []);
+
+    useEffect(() => {
+        if (!ready || !user || !client) {
+            return;
+        }
+        client.myConfiguration()
+            .then(storeSupplierConfiguration)
+            .catch((error) => {
+                if (error instanceof ApiError && error.status === 404) {
+                    storeSupplierConfiguration(null);
+                }
+            });
+    }, [ready, user, client, storeSupplierConfiguration]);
+
     const logout = useCallback(async () => {
         await client?.logout();
         await unpair();
         setUser(null);
+        storeSupplierConfiguration(null);
         await writeJson(KEYS.user, null);
-    }, [client, unpair]);
+    }, [client, unpair, storeSupplierConfiguration]);
 
     const storePairing = useCallback(async (managerDevice: ManagerDevice, key: string, resolvedDeviceId?: string | null) => {
         const pairedDevice = {...toPairedDevice(managerDevice), deviceId: resolvedDeviceId || managerDevice.deviceId?.value || ""};
@@ -223,10 +249,12 @@ export function TerminalProvider({children}: {children: React.ReactNode}) {
     }, []);
 
     const value = useMemo<TerminalState>(() => ({
-        ready, serverUrl, user, device, pairKey, client, pending, history, options,
+        ready, serverUrl, user, device, pairKey, client, pending, history, options, supplierConfiguration,
         login, logout, pair, savePairKey, unpair, addScan, removeScan, clearScans, setOptions, send, clearHistory,
-    }), [ready, serverUrl, user, device, pairKey, client, pending, history, options,
-        login, logout, pair, savePairKey, unpair, addScan, removeScan, clearScans, setOptions, send, clearHistory]);
+        storeSupplierConfiguration,
+    }), [ready, serverUrl, user, device, pairKey, client, pending, history, options, supplierConfiguration,
+        login, logout, pair, savePairKey, unpair, addScan, removeScan, clearScans, setOptions, send, clearHistory,
+        storeSupplierConfiguration]);
 
     return <TerminalContext.Provider value={value}>{children}</TerminalContext.Provider>;
 }

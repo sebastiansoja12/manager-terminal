@@ -1,10 +1,11 @@
 import * as Haptics from "expo-haptics";
-import {router, Stack} from "expo-router";
-import React, {useCallback, useRef, useState} from "react";
+import {router, Stack, useLocalSearchParams} from "expo-router";
+import React, {useRef, useState} from "react";
 import {Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View} from "react-native";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
 import {AddScanResult, useTerminal} from "../state/TerminalContext";
 import {modeIsSingleScan, modeRequiresShipmentId, TerminalFaultError} from "../terminal/soap";
+import {isScanRequired} from "../terminal/supplierConfiguration";
 import type {ScanMode, TerminalResult} from "../terminal/types";
 import {BarcodeCamera} from "../ui/BarcodeCamera";
 import {Banner, BannerTone, Button, Card, Field} from "../ui/components";
@@ -39,8 +40,9 @@ const isPairKeyFault = (message: string) => /pair key|device.*(not found|inactiv
 
 export default function ScannerScreen() {
     const insets = useSafeAreaInsets();
-    const {user, device, pending, options, setOptions, addScan, removeScan, clearScans, send, unpair} = useTerminal();
-    const [mode, setMode] = useState<ScanMode>("COLLECT");
+    const {user, device, pending, options, setOptions, addScan, removeScan, clearScans, send, unpair, supplierConfiguration} = useTerminal();
+    const params = useLocalSearchParams<{mode?: string}>();
+    const mode: ScanMode = MODES.find((entry) => entry.mode === params.mode)?.mode || "COLLECT";
     const [code, setCode] = useState("");
     const [cameraOn, setCameraOn] = useState(false);
     const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -51,8 +53,9 @@ export default function ScannerScreen() {
     const items = pending[mode];
     const needsShipmentId = modeRequiresShipmentId(mode);
     const hint = MODES.find((entry) => entry.mode === mode)?.hint;
+    const scanRequired = isScanRequired(supplierConfiguration, mode);
 
-    const handleCode = useCallback((value: string) => {
+    const handleCode = (value: string) => {
         const outcome = addScan(mode, value);
         const base = scanFeedback[outcome];
         const description = outcome === "invalid" && needsShipmentId
@@ -61,18 +64,12 @@ export default function ScannerScreen() {
         setFeedback({...base, description});
         haptic(base.tone);
         setResult(null);
-    }, [addScan, mode, needsShipmentId]);
+    };
 
     const submitInput = () => {
         handleCode(code);
         setCode("");
         setTimeout(() => inputRef.current?.focus(), 0);
-    };
-
-    const changeMode = (next: ScanMode) => {
-        setMode(next);
-        setFeedback(null);
-        setResult(null);
     };
 
     const validationError = (): string | null => {
@@ -128,10 +125,10 @@ export default function ScannerScreen() {
     return (
         <View style={styles.root}>
             <Stack.Screen options={{
+                title: modeLabel(mode),
                 headerRight: () => (
                     <View style={styles.headerActions}>
                         <Pressable onPress={() => router.push("/history")} hitSlop={8}><Text style={styles.headerLink}>Historia</Text></Pressable>
-                        <Pressable onPress={() => router.push("/device")} hitSlop={8}><Text style={styles.headerLink}>Urządzenie</Text></Pressable>
                     </View>
                 ),
             }}/>
@@ -143,20 +140,10 @@ export default function ScannerScreen() {
                     </Text>
                 </View>
 
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modes}>
-                    {MODES.map((entry) => {
-                        const active = entry.mode === mode;
-                        const count = pending[entry.mode].length;
-                        return (
-                            <Pressable key={entry.mode} onPress={() => changeMode(entry.mode)} style={[styles.mode, active && styles.modeActive]}>
-                                <Text style={[styles.modeText, active && styles.modeTextActive]}>
-                                    {entry.label}{count ? ` (${count})` : ""}
-                                </Text>
-                            </Pressable>
-                        );
-                    })}
-                </ScrollView>
                 <Text style={styles.hint}>{hint}</Text>
+                {scanRequired ? (
+                    <Text style={styles.scanRequired}>Wymagane skanowanie — ręczne dodawanie kodów jest wyłączone w Twoich ustawieniach.</Text>
+                ) : null}
 
                 {cameraOn ? <BarcodeCamera onScan={handleCode}/> : null}
 
@@ -177,7 +164,9 @@ export default function ScannerScreen() {
                             showSoftInputOnFocus={!cameraOn}
                         />
                     </View>
-                    <Button label="Dodaj" variant="secondary" onPress={submitInput} disabled={!code.trim()} style={styles.addButton}/>
+                    {scanRequired ? null : (
+                        <Button label="Dodaj" variant="secondary" onPress={submitInput} disabled={!code.trim()} style={styles.addButton}/>
+                    )}
                 </View>
                 <Button label={cameraOn ? "Wyłącz aparat" : "Skanuj aparatem"} variant="secondary" onPress={() => setCameraOn((value) => !value)}/>
 
@@ -274,19 +263,11 @@ const styles = StyleSheet.create({
     status: {flexDirection: "row", alignItems: "center", gap: spacing.sm},
     statusDot: {width: 8, height: 8, borderRadius: 4, backgroundColor: colors.success},
     statusText: {color: colors.textMuted, fontSize: 13, flex: 1},
-    modes: {gap: spacing.sm},
-    mode: {
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.sm + 2,
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: colors.border,
-        backgroundColor: colors.surface,
-    },
     modeActive: {backgroundColor: colors.primary, borderColor: colors.primary},
     modeText: {color: colors.text, fontWeight: "600", fontSize: 15},
     modeTextActive: {color: colors.primaryText},
     hint: {color: colors.textMuted, fontSize: 13},
+    scanRequired: {color: colors.warning, fontSize: 13, fontWeight: "600"},
     scanRow: {flexDirection: "row", alignItems: "flex-end", gap: spacing.sm},
     scanInput: {flex: 1},
     addButton: {minWidth: 84},

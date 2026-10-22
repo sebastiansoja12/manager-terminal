@@ -76,6 +76,36 @@ export function Banner({tone, title, description}: {tone: BannerTone; title: str
     );
 }
 
+type TileProps = {
+    icon: string;
+    title: string;
+    subtitle?: string | null;
+    badge?: string | null;
+    onPress: () => void;
+    style?: ViewStyle;
+};
+
+export function Tile({icon, title, subtitle, badge, onPress, style}: TileProps) {
+    return (
+        <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={title}
+            onPress={onPress}
+            style={({pressed}) => [styles.tile, pressed && styles.pressed, style]}
+        >
+            <View style={styles.tileIcon}>
+                <Text style={styles.tileIconText}>{icon}</Text>
+            </View>
+            <View style={styles.tileText}>
+                <Text style={styles.tileTitle}>{title}</Text>
+                {subtitle ? <Text style={styles.tileSubtitle}>{subtitle}</Text> : null}
+            </View>
+            {badge ? <Text style={styles.tileBadge}>{badge}</Text> : null}
+            <Text style={styles.tileChevron}>›</Text>
+        </Pressable>
+    );
+}
+
 export function Card({children, style}: {children: React.ReactNode; style?: ViewStyle}) {
     return <View style={[styles.card, style]}>{children}</View>;
 }
@@ -115,6 +145,41 @@ const styles = StyleSheet.create({
     banner: {borderRadius: radius.md, borderWidth: 1, padding: spacing.md, gap: 2},
     bannerTitle: {color: colors.text, fontSize: 16, fontWeight: "700"},
     bannerDescription: {color: colors.text, fontSize: 14, opacity: 0.85},
+    tile: {
+        minHeight: 88,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.md,
+        padding: spacing.lg,
+        borderRadius: radius.lg,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.surface,
+    },
+    tileIcon: {
+        width: 52,
+        height: 52,
+        borderRadius: radius.md,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: colors.surfaceRaised,
+    },
+    tileIconText: {fontSize: 26},
+    tileText: {flex: 1, gap: 2},
+    tileTitle: {color: colors.text, fontSize: 18, fontWeight: "700"},
+    tileSubtitle: {color: colors.textMuted, fontSize: 13},
+    tileBadge: {
+        minWidth: 28,
+        paddingHorizontal: spacing.sm,
+        paddingVertical: 2,
+        borderRadius: 999,
+        overflow: "hidden",
+        textAlign: "center",
+        color: colors.primaryText,
+        backgroundColor: colors.primary,
+        fontWeight: "700",
+    },
+    tileChevron: {color: colors.textMuted, fontSize: 28, fontWeight: "300"},
     card: {
         backgroundColor: colors.surface,
         borderRadius: radius.lg,

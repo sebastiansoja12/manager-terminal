@@ -26,6 +26,24 @@ Schemat: `managerv2/LogisticsOrchestrator/LogisticsOrchestratorApi/src/main/reso
 4. **Wysyłka** – `POST /ws` z kopertą SOAP. Wyniki per paczka są pokazywane na ekranie i zapisywane w historii.
    Przy błędzie sieci/serwera kody zostają w kolejce; przy błędnym `PairKey` aplikacja wraca do parowania.
 
+## Ekran startowy
+
+Po zalogowaniu aplikacja otwiera ekran z kafelkami: **Skanowanie** (menu trybów: odbiór, paleta, zwrot,
+odmowa, nieobecny oraz historia wysyłek), **Ustawienia** i **Urządzenie**, a pod nimi przycisk **Wyloguj**.
+Skanowanie wymaga sparowanego urządzenia — bez niego kafelek prowadzi do parowania.
+
+Kafelek **Sprawdź przesyłkę** wyszukuje przesyłkę po numerze śledzenia (wpisanym, ze skanera sprzętowego
+lub z aparatu) przez `GET /shipments/tracking-numbers/{numer}/control-center` i pokazuje status, odbiorcę,
+nadawcę, dane paczki oraz historię zdarzeń. Nie wymaga sparowanego urządzenia.
+
+## Moje ustawienia
+
+Ekran `Ustawienia` (kafelek na ekranie startowym) pozwala kurierowi samodzielnie zmieniać konfigurację
+(`GET/PUT /suppliers/me/configuration`, `POST /suppliers/me/configuration/reset`, historia w `/history`).
+Ustawienia wymuszone przez politykę firmy są widoczne, ale zablokowane. Zapis wysyła `version` —
+przy konflikcie (409) aplikacja prosi o ponowne wczytanie danych. Konfiguracja jest buforowana lokalnie;
+gdy wymagane jest skanowanie przy odbiorze lub zwrocie, ręczne dodawanie kodów przyciskiem jest wyłączone.
+
 ## Uruchomienie
 
 ```bash

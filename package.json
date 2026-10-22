@@ -33,7 +33,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test": "node --test src/terminal/soap.test.ts",
+    "test": "node --test src/terminal/soap.test.ts src/terminal/supplierConfiguration.test.ts src/terminal/shipmentLookup.test.ts",
     "lint": "expo lint"
   },
   "private": true

@@ -80,7 +80,7 @@ export default function DeviceScreen() {
         setPairError(null);
         try {
             await action();
-            router.replace("/scanner");
+            router.replace("/home");
         } catch (exception) {
             setPairError((exception as Error).message);
         } finally {

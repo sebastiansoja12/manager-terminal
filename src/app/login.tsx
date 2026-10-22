@@ -6,7 +6,7 @@ import {Banner, Button, Card, Field} from "../ui/components";
 import {colors, spacing} from "../ui/theme";
 
 export default function LoginScreen() {
-    const {serverUrl, login, pairKey} = useTerminal();
+    const {serverUrl, login} = useTerminal();
     const [url, setUrl] = useState(serverUrl);
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
@@ -24,7 +24,7 @@ export default function LoginScreen() {
         try {
             await login(url, username, password);
             setPassword("");
-            router.replace(pairKey ? "/scanner" : "/device");
+            router.replace("/home");
         } catch (exception) {
             setError((exception as Error).message);
         } finally {
