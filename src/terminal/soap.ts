@@ -41,9 +41,8 @@ const terminalRequest = (processType: string, device: DeviceInformation, content
     + content
     + `</TerminalRequest>`;
 
-export const isNumericShipmentId = (code: string) => /^\d{1,19}$/.test(code);
-
-export const modeRequiresShipmentId = (mode: ScanMode) => mode === "RETURN" || mode === "REJECT" || mode === "MISS";
+// Return, reject and missed delivery go through TerminalRequest; the manager resolves tracking numbers to shipments.
+export const modeIsDeliveryProcess = (mode: ScanMode) => mode === "RETURN" || mode === "REJECT" || mode === "MISS";
 
 export const modeIsSingleScan = (mode: ScanMode) => mode === "PALLET";
 
@@ -62,6 +61,16 @@ export const buildEnvelope = (mode: ScanMode,
                 + items.map((item) => `<CollectDetail>${element("TrackingNumber", item.code)}</CollectDetail>`).join("")
                 + `</CollectDetails>`
                 + `</CollectRequest>`);
+        case "HANDOVER":
+            return envelope(
+                `<HandoverRequest xmlns="${TERMINAL_NAMESPACE}">`
+                + deviceXml("DeviceInformation", device)
+                + `<HandoverDetails>`
+                + element("RecipientName", options.recipientName.trim())
+                + element("Signature", options.signature)
+                + items.map((item) => `<HandoverDetail>${element("TrackingNumber", item.code)}</HandoverDetail>`).join("")
+                + `</HandoverDetails>`
+                + `</HandoverRequest>`);
         case "PALLET":
             return envelope(
                 `<PalletScanRequest xmlns="${TERMINAL_NAMESPACE}">`
@@ -72,7 +81,7 @@ export const buildEnvelope = (mode: ScanMode,
             return envelope(terminalRequest("REJECT", device,
                 `<DeliveryRejectRequest><DeliveryRejectDetails>`
                 + items.map((item) => `<DeliveryRejectDetail>`
-                    + element("ShipmentID", item.code)
+                    + element("TrackingNumber", item.code)
                     + element("SupplierCode", supplier)
                     + element("DeliveryStatus", "REJECTED")
                     + element("DepartmentCode", department)
@@ -83,7 +92,7 @@ export const buildEnvelope = (mode: ScanMode,
             return envelope(terminalRequest("RETURN", device,
                 `<DeliveryReturnRequest><DeliveryReturnDetails>`
                 + items.map((item) => `<DeliveryReturnDetail>`
-                    + element("ShipmentID", item.code)
+                    + element("TrackingNumber", item.code)
                     + element("DeliveryStatus", "RETURN")
                     + element("DepartmentCode", department)
                     + element("SupplierCode", supplier)
@@ -94,7 +103,7 @@ export const buildEnvelope = (mode: ScanMode,
             return envelope(terminalRequest("MISS", device,
                 `<DeliveryMissedRequest><DeliveryMissedDetails>`
                 + items.map((item) => `<DeliveryMissedDetail>`
-                    + element("ShipmentID", item.code)
+                    + element("TrackingNumber", item.code)
                     + element("DeliveryStatus", "UNKNOWN")
                     + element("DepartmentCode", department)
                     + element("SupplierCode", supplier)
@@ -158,15 +167,16 @@ export const parseEnvelope = (mode: ScanMode, xml: string): TerminalResult => {
     }
     const body = parseBody(xml);
 
-    if (mode === "COLLECT") {
-        const response = node(body.CollectResponse);
+    if (mode === "COLLECT" || mode === "HANDOVER") {
+        const prefix = mode === "COLLECT" ? "Collect" : "Handover";
+        const response = node(body[`${prefix}Response`]);
         if (!Object.keys(response).length) {
-            throw new TerminalFaultError("Brak CollectResponse w odpowiedzi");
+            throw new TerminalFaultError(`Brak ${prefix}Response w odpowiedzi`);
         }
-        const details = list(response, "CollectResponseDetails", "CollectResponseDetail").map((detail) => ({
+        const details = list(response, `${prefix}ResponseDetails`, `${prefix}ResponseDetail`).map((detail) => ({
             code: text(detail, "TrackingNumber") || "",
             success: text(detail, "Success") === "true",
-            message: text(detail, "ErrorMessage") || (text(detail, "ShipmentID") ? `ID ${text(detail, "ShipmentID")}` : null),
+            message: text(detail, "ErrorMessage"),
         }));
         return {
             mode,
@@ -183,7 +193,7 @@ export const parseEnvelope = (mode: ScanMode, xml: string): TerminalResult => {
             throw new TerminalFaultError("Brak PalletScanResponse w odpowiedzi");
         }
         const details = list(response, "PalletScanResponseDetails", "PalletScanResponseDetail").map((detail) => ({
-            code: text(detail, "ShipmentID") || "",
+            code: text(detail, "TrackingNumber") || "",
             success: text(detail, "Success") === "true",
             message: text(detail, "ErrorMessage") || text(detail, "ShipmentStatus"),
         }));
@@ -210,9 +220,9 @@ export const parseEnvelope = (mode: ScanMode, xml: string): TerminalResult => {
     if (mode === "REJECT") {
         const details = list(node(response.DeliveryRejectResponse), "DeliveryRejectResponseDetails", "DeliveryRejectResponseDetail")
             .map((detail) => ({
-                code: text(detail, "ShipmentID") || "",
+                code: text(detail, "TrackingNumber") || "",
                 success: true,
-                message: text(detail, "NewShipmentID") ? `Nowa przesyłka ${text(detail, "NewShipmentID")}` : text(detail, "DeliveryStatus"),
+                message: text(detail, "NewTrackingNumber") ? `Nowa przesyłka ${text(detail, "NewTrackingNumber")}` : text(detail, "DeliveryStatus"),
             }));
         return {mode, processId, success: true, details, summary: null};
     }
@@ -220,9 +230,11 @@ export const parseEnvelope = (mode: ScanMode, xml: string): TerminalResult => {
     if (mode === "RETURN") {
         const details = list(node(response.DeliveryReturnResponse), "DeliveryReturnResponseDetails", "DeliveryReturnResponseDetail")
             .map((detail) => ({
-                code: text(detail, "ShipmentID") || "",
+                code: text(detail, "TrackingNumber") || "",
                 success: !text(detail, "ErrorMessage"),
-                message: text(detail, "ErrorMessage") || text(detail, "UpdateStatus") || text(detail, "DeliveryStatus"),
+                message: text(detail, "ErrorMessage")
+                    || (text(detail, "NewTrackingNumber") ? `Przesyłka zwrotna ${text(detail, "NewTrackingNumber")}` : null)
+                    || text(detail, "UpdateStatus") || text(detail, "DeliveryStatus"),
             }));
         return {mode, processId, success: details.length === 0 || allSucceeded(details), details, summary: null};
     }
