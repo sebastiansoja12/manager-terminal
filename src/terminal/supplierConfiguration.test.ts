@@ -3,6 +3,7 @@ import {test} from "node:test";
 import {
     isDraftDirty,
     isScanRequired,
+    isSignatureRequired,
     toDraft,
     toFieldErrors,
     toggleSetting,
@@ -85,4 +86,13 @@ test("requires scanning only in the modes covered by the configuration", () => {
     assert.equal(isScanRequired(loaded, "COLLECT"), true);
     assert.equal(isScanRequired(loaded, "RETURN"), false);
     assert.equal(isScanRequired(null, "COLLECT"), false);
+});
+
+test("requires a recipient signature only when the configuration enables it", () => {
+    const signed = configuration({settings: {...configuration().settings, REQUIRE_RECIPIENT_SIGNATURE: true, REQUIRE_DELIVERY_SCAN: true}});
+
+    assert.equal(isSignatureRequired(signed), true);
+    assert.equal(isSignatureRequired(configuration()), false);
+    assert.equal(isSignatureRequired(null), false);
+    assert.equal(isScanRequired(signed, "HANDOVER"), true);
 });

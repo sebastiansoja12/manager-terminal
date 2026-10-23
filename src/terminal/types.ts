@@ -1,4 +1,4 @@
-export type ScanMode = "COLLECT" | "PALLET" | "RETURN" | "REJECT" | "MISS";
+export type ScanMode = "COLLECT" | "PALLET" | "RETURN" | "REJECT" | "MISS" | "HANDOVER";
 
 export type DeviceInformation = {
     version: string;
@@ -19,6 +19,8 @@ export type ScanOptions = {
     supplierCode: string;
     rejectReason: string;
     returnToken: string;
+    recipientName: string;
+    signature: string;
 };
 
 export type ResultDetail = {

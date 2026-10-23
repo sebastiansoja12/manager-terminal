@@ -2,6 +2,7 @@ import {BarcodeScanningResult, CameraView, useCameraPermissions} from "expo-came
 import React, {useCallback, useRef, useState} from "react";
 import {Pressable, StyleSheet, Text, View} from "react-native";
 import {Button} from "./components";
+import {Icon} from "./Icon";
 import {colors, radius, spacing} from "./theme";
 
 const REPEAT_COOLDOWN_MS = 2000;
@@ -53,9 +54,22 @@ export function BarcodeCamera({onScan, height = 240}: Props) {
                 }}
                 onBarcodeScanned={handleScan}
             />
-            <View pointerEvents="none" style={styles.frame}/>
-            <Pressable style={styles.torch} onPress={() => setTorch((value) => !value)}>
-                <Text style={styles.torchText}>{torch ? "Latarka: wł." : "Latarka: wył."}</Text>
+            <View pointerEvents="none" style={styles.frame}>
+                <View style={[styles.corner, styles.topLeft]}/>
+                <View style={[styles.corner, styles.topRight]}/>
+                <View style={[styles.corner, styles.bottomLeft]}/>
+                <View style={[styles.corner, styles.bottomRight]}/>
+                <View style={styles.laser}/>
+            </View>
+            <Pressable
+                accessibilityRole="switch"
+                accessibilityLabel="Latarka"
+                accessibilityState={{checked: torch}}
+                hitSlop={6}
+                style={[styles.torch, torch && styles.torchOn]}
+                onPress={() => setTorch((value) => !value)}
+            >
+                <Icon name="flashlight" size={20} color={torch ? colors.primaryText : colors.text}/>
             </Pressable>
         </View>
     );
@@ -78,20 +92,25 @@ const styles = StyleSheet.create({
         position: "absolute",
         left: "12%",
         right: "12%",
-        top: "30%",
-        bottom: "30%",
-        borderWidth: 2,
-        borderColor: colors.primary,
-        borderRadius: radius.sm,
+        top: "26%",
+        bottom: "26%",
     },
+    corner: {position: "absolute", width: 30, height: 30, borderColor: colors.primary},
+    topLeft: {left: 0, top: 0, borderLeftWidth: 4, borderTopWidth: 4, borderTopLeftRadius: radius.md},
+    topRight: {right: 0, top: 0, borderRightWidth: 4, borderTopWidth: 4, borderTopRightRadius: radius.md},
+    bottomLeft: {left: 0, bottom: 0, borderLeftWidth: 4, borderBottomWidth: 4, borderBottomLeftRadius: radius.md},
+    bottomRight: {right: 0, bottom: 0, borderRightWidth: 4, borderBottomWidth: 4, borderBottomRightRadius: radius.md},
+    laser: {position: "absolute", left: 12, right: 12, top: "50%", height: 2, backgroundColor: "#F87171", opacity: 0.9},
     torch: {
         position: "absolute",
-        right: spacing.sm,
-        top: spacing.sm,
-        backgroundColor: "rgba(0,0,0,0.6)",
-        borderRadius: radius.sm,
-        paddingHorizontal: spacing.sm,
-        paddingVertical: spacing.xs,
+        right: spacing.md,
+        top: spacing.md,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "rgba(11,18,32,0.7)",
     },
-    torchText: {color: colors.text, fontSize: 12, fontWeight: "600"},
+    torchOn: {backgroundColor: colors.primary},
 });

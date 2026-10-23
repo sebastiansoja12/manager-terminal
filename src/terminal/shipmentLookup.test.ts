@@ -8,6 +8,7 @@ import {
     partyAddress,
     partyName,
     routeEvents,
+    statusStep,
     statusTone,
 } from "./shipmentLookup.ts";
 import type {ShipmentLookupDetails, ShipmentParty} from "./shipmentLookup.ts";
@@ -58,4 +59,11 @@ test("maps statuses to tones", () => {
     assert.equal(statusTone("DELIVERY"), "success");
     assert.equal(statusTone("CANCELED"), "danger");
     assert.equal(statusTone("SENT"), "info");
+});
+
+test("maps statuses to delivery progress", () => {
+    assert.equal(statusStep("CREATED"), 0);
+    assert.equal(statusStep("SENT"), 2);
+    assert.equal(statusStep("DELIVERY"), 3);
+    assert.equal(statusStep("CANCELED"), null);
 });

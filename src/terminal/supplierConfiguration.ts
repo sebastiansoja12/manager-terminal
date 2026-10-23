@@ -49,7 +49,7 @@ export type SettingDefinition = {
 };
 
 export type SupplierConfiguration = {
-    supplierId: number;
+    supplierId: number | string;
     supplierCode: string;
     firstName: string | null;
     lastName: string | null;
@@ -261,5 +261,12 @@ export const isScanRequired = (configuration: SupplierConfiguration | null, mode
     if (mode === "RETURN") {
         return configuration.settings.REQUIRE_RETURN_SCAN;
     }
+    if (mode === "HANDOVER") {
+        return configuration.settings.REQUIRE_DELIVERY_SCAN;
+    }
     return false;
 };
+
+export const isSignatureRequired = (configuration: SupplierConfiguration | null) => (
+    Boolean(configuration?.settings.REQUIRE_RECIPIENT_SIGNATURE)
+);

@@ -158,3 +158,12 @@ export const eventTitle = (event: RouteEvent) => {
 export const eventLocation = (event: RouteEvent) => (
     event.departmentCode?.value || event.depotCode?.value || null
 );
+
+const STATUS_STEPS: Partial<Record<ShipmentStatus, number>> = {
+    PLANNED: 0, CREATED: 0, PREPARED: 0, ACCEPTED: 1, REROUTE: 1, REDIRECT: 1, SENT: 2, DELIVERY: 3,
+};
+
+// Progress through Nadana → Sortownia → U kuriera → Doręczona; null for returns and cancellations.
+export const statusStep = (status: ShipmentStatus): number | null => STATUS_STEPS[status] ?? null;
+
+export const STATUS_STEP_LABELS = ["Nadana", "W sortowni", "W drodze", "Doręczona"];

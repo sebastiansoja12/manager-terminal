@@ -4,8 +4,10 @@ import {ActivityIndicator, View} from "react-native";
 import {useTerminal} from "../state/TerminalContext";
 import {colors} from "../ui/theme";
 
+const sessionExpired = (expiresAt: string | null) => !expiresAt || new Date(expiresAt).getTime() <= Date.now();
+
 export default function Index() {
-    const {ready, user} = useTerminal();
+    const {ready, pairKey, user, operatorSessionExpiresAt} = useTerminal();
 
     if (!ready) {
         return (
@@ -14,7 +16,10 @@ export default function Index() {
             </View>
         );
     }
-    if (!user) {
+    if (!pairKey) {
+        return <Redirect href="/activate"/>;
+    }
+    if (!user || sessionExpired(operatorSessionExpiresAt)) {
         return <Redirect href="/login"/>;
     }
     return <Redirect href="/home"/>;
