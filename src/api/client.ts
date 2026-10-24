@@ -1,3 +1,10 @@
+import {parseJson} from "./json";
+import type {ChatConversationApi, ChatMessageApi, ChatUserApi} from "../terminal/chat";
+import {pickupPointsQuery} from "../terminal/pickupPoints";
+import type {PickupPoint, PickupPointPage} from "../terminal/pickupPoints";
+import type {Carrier, SupplierProfile} from "../terminal/vehicle";
+import type {AttemptStatus, Delivery} from "../terminal/deliveries";
+import type {ProcessLog, ProcessLogPage} from "../terminal/processes";
 import {buildEnvelope, findFaultMessage, parseEnvelope, TerminalFaultError} from "../terminal/soap";
 import type {ShipmentLookupDetails} from "../terminal/shipmentLookup";
 import type {ConfigurationRevision, SubstituteCandidate, SupplierConfiguration, SupplierConfigurationUpdate} from "../terminal/supplierConfiguration";
@@ -22,13 +29,46 @@ export type ManagerDevice = {
     depotCode: Wrapped<string>;
     lastUpdate: string | null;
     active: boolean | null;
+    assignmentMode: DeviceAssignmentMode | null;
 };
 
-export type DevicePairResponse = {
-    deviceId: Wrapped<string>;
-    pairStatus: string | null;
-    pairKey: string | null;
+export type DeviceAssignmentMode = "PERSONAL" | "SHARED";
+
+export type DeviceActivationRequest = {
+    activationCode: string;
+    installationId: string;
+    deviceType: string;
+    appVersion: string;
+    manufacturer: string | null;
+    model: string | null;
+    osName: string | null;
+    osVersion: string | null;
 };
+
+export type DeviceActivationResponse = {
+    device: ManagerDevice;
+    pairKey: string;
+    pairKeyExpiresAt: string;
+};
+
+export type OperatorSessionResponse = {
+    device: ManagerDevice;
+    sessionExpiresAt: string;
+};
+
+export type DeviceHeartbeat = {
+    version: string;
+    manufacturer: string | null;
+    model: string | null;
+    osName: string | null;
+    osVersion: string | null;
+};
+
+export type DeviceHeartbeatResponse = {
+    updateRequired: boolean | null;
+};
+
+const HEADER_DEVICE_PAIR_KEY = "X-DEVICE-PAIR-KEY";
 
 export class ApiError extends Error {
     constructor(message: string, readonly status: number, readonly details?: unknown) {
@@ -45,6 +85,7 @@ const SOAP_ACTIONS: Record<ScanMode, string> = {
     RETURN: "processTerminal",
     REJECT: "processTerminal",
     MISS: "processTerminal",
+    HANDOVER: "processHandover",
 };
 
 export const normalizeServerUrl = (value: string) => {
@@ -57,7 +98,7 @@ export const normalizeServerUrl = (value: string) => {
 
 const parseDetails = (body: string): unknown => {
     try {
-        return JSON.parse(body);
+        return parseJson<unknown>(body);
     } catch {
         return undefined;
     }
@@ -187,31 +228,45 @@ export class ManagerClient {
     }
 
     async me(): Promise<CurrentUser> {
-        return JSON.parse(await this.request("GET", "/auth/me")) as CurrentUser;
+        return parseJson<CurrentUser>(await this.request("GET", "/auth/me"));
     }
 
-    async currentUserDevices(): Promise<ManagerDevice[]> {
-        return JSON.parse(await this.request("GET", "/devices/current-user")) as ManagerDevice[];
-    }
-
-    async pairDevice(externalSystemId: string, departmentCode: string | null): Promise<DevicePairResponse> {
-        const body = await this.request("POST", "/devices/current-user/pairings", {
-            body: JSON.stringify({
-                externalSystemId,
-                departmentCode: departmentCode ? {value: departmentCode} : null,
-            }),
+    async activateDevice(activation: DeviceActivationRequest): Promise<DeviceActivationResponse> {
+        const body = await this.request("POST", "/internal/device-activations", {
+            body: JSON.stringify(activation),
             headers: {"Content-Type": "application/json"},
         });
-        return JSON.parse(body) as DevicePairResponse;
+        return parseJson<DeviceActivationResponse>(body);
+    }
+
+    async startOperatorSession(pairKey: string): Promise<OperatorSessionResponse> {
+        const body = await this.request("POST", "/devices/current-user/sessions", {
+            headers: {[HEADER_DEVICE_PAIR_KEY]: pairKey},
+        });
+        return parseJson<OperatorSessionResponse>(body);
+    }
+
+    async endOperatorSession(pairKey: string): Promise<void> {
+        await this.request("DELETE", "/devices/current-user/sessions", {
+            headers: {[HEADER_DEVICE_PAIR_KEY]: pairKey},
+        });
+    }
+
+    async heartbeat(pairKey: string, heartbeat: DeviceHeartbeat): Promise<DeviceHeartbeatResponse> {
+        const body = await this.request("POST", "/internal/device-pairing-verifications/heartbeats", {
+            body: JSON.stringify(heartbeat),
+            headers: {"Content-Type": "application/json", [HEADER_DEVICE_PAIR_KEY]: pairKey},
+        });
+        return parseJson<DeviceHeartbeatResponse>(body);
     }
 
     async shipmentByTrackingNumber(trackingNumber: string): Promise<ShipmentLookupDetails> {
         const path = `/shipments/tracking-numbers/${encodeURIComponent(trackingNumber)}/control-center`;
-        return JSON.parse(await this.request("GET", path)) as ShipmentLookupDetails;
+        return parseJson<ShipmentLookupDetails>(await this.request("GET", path));
     }
 
     async myConfiguration(): Promise<SupplierConfiguration> {
-        return JSON.parse(await this.request("GET", "/suppliers/me/configuration")) as SupplierConfiguration;
+        return parseJson<SupplierConfiguration>(await this.request("GET", "/suppliers/me/configuration"));
     }
 
     async updateMyConfiguration(update: SupplierConfigurationUpdate): Promise<SupplierConfiguration> {
@@ -219,7 +274,7 @@ export class ManagerClient {
             body: JSON.stringify(update),
             headers: {"Content-Type": "application/json"},
         });
-        return JSON.parse(body) as SupplierConfiguration;
+        return parseJson<SupplierConfiguration>(body);
     }
 
     async resetMyConfiguration(version: number | null): Promise<SupplierConfiguration> {
@@ -227,15 +282,89 @@ export class ManagerClient {
             body: JSON.stringify({version}),
             headers: {"Content-Type": "application/json"},
         });
-        return JSON.parse(body) as SupplierConfiguration;
+        return parseJson<SupplierConfiguration>(body);
     }
 
     async myConfigurationHistory(): Promise<ConfigurationRevision[]> {
-        return JSON.parse(await this.request("GET", "/suppliers/me/configuration/history")) as ConfigurationRevision[];
+        return parseJson<ConfigurationRevision[]>(await this.request("GET", "/suppliers/me/configuration/history"));
     }
 
     async substituteCandidates(): Promise<SubstituteCandidate[]> {
-        return JSON.parse(await this.request("GET", "/suppliers/me/configuration/substitute-candidates")) as SubstituteCandidate[];
+        return parseJson<SubstituteCandidate[]>(await this.request("GET", "/suppliers/me/configuration/substitute-candidates"));
+    }
+
+    async chatUsers(): Promise<ChatUserApi[]> {
+        return parseJson<ChatUserApi[]>(await this.request("GET", "/users"));
+    }
+
+    async openDirectConversation(participantUserId: string): Promise<ChatConversationApi> {
+        const body = await this.request("POST", `/chat/conversations/direct/${encodeURIComponent(participantUserId)}`);
+        return parseJson<ChatConversationApi>(body);
+    }
+
+    async chatMessages(conversationId: string, limit = 100): Promise<ChatMessageApi[]> {
+        const path = `/chat/conversations/${encodeURIComponent(conversationId)}/messages?limit=${limit}`;
+        return parseJson<ChatMessageApi[]>(await this.request("GET", path));
+    }
+
+    async sendChatMessage(conversationId: string, clientMessageId: string, body: string): Promise<ChatMessageApi> {
+        const response = await this.request("POST", `/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
+            body: JSON.stringify({clientMessageId, body}),
+            headers: {"Content-Type": "application/json"},
+        });
+        return parseJson<ChatMessageApi>(response);
+    }
+
+    async pickupPoints(query: string, collectionOnly: boolean): Promise<PickupPointPage> {
+        return parseJson<PickupPointPage>(await this.request("GET", `/pickup-points?${pickupPointsQuery(query, collectionOnly)}`));
+    }
+
+    async pickupPoint(pickupPointId: string): Promise<PickupPoint> {
+        return parseJson<PickupPoint>(await this.request("GET", `/pickup-points/${encodeURIComponent(pickupPointId)}`));
+    }
+
+    async supplierProfile(supplierCode: string): Promise<SupplierProfile> {
+        return parseJson<SupplierProfile>(await this.request("GET", `/suppliers/by-suppliercode/${encodeURIComponent(supplierCode)}`));
+    }
+
+    async carriers(): Promise<Carrier[]> {
+        return parseJson<Carrier[]>(await this.request("GET", "/carriers"));
+    }
+
+    async supplierDeliveries(supplierId: number | string, limit = 50): Promise<Delivery[]> {
+        return parseJson<Delivery[]>(await this.request("GET", `/deliveries?supplierId=${encodeURIComponent(String(supplierId))}&limit=${limit}`));
+    }
+
+    async delivery(deliveryId: string): Promise<Delivery> {
+        return parseJson<Delivery>(await this.request("GET", `/deliveries/${encodeURIComponent(deliveryId)}`));
+    }
+
+    async shipmentById(shipmentId: string): Promise<ShipmentLookupDetails> {
+        return parseJson<ShipmentLookupDetails>(await this.request("GET", `/shipments/${encodeURIComponent(shipmentId)}/control-center`));
+    }
+
+    async registerDeliveryAttempt(deliveryId: string, deliveryStatus: AttemptStatus, comment: string | null): Promise<Delivery> {
+        const body = await this.request("POST", `/deliveries/${encodeURIComponent(deliveryId)}/attempts`, {
+            body: JSON.stringify({deliveryStatus, comment}),
+            headers: {"Content-Type": "application/json"},
+        });
+        return parseJson<Delivery>(body);
+    }
+
+    async commentDeliveryStep(deliveryId: string, stepNumber: number, comment: string): Promise<Delivery> {
+        const body = await this.request("PUT", `/deliveries/${encodeURIComponent(deliveryId)}/steps/${stepNumber}/comment`, {
+            body: JSON.stringify({comment}),
+            headers: {"Content-Type": "application/json"},
+        });
+        return parseJson<Delivery>(body);
+    }
+
+    async myProcesses(page = 0, size = 20): Promise<ProcessLogPage> {
+        return parseJson<ProcessLogPage>(await this.request("GET", `/process-logs?page=${page}&size=${size}&sort=createdAt,desc`));
+    }
+
+    async process(processId: string): Promise<ProcessLog> {
+        return parseJson<ProcessLog>(await this.request("GET", `/process-logs/${encodeURIComponent(processId)}`));
     }
 
     async sendScans(mode: ScanMode,

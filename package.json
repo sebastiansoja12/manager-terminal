@@ -4,21 +4,24 @@
   "main": "expo-router/entry",
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
-    "expo": "~58.0.16",
+    "expo": "^58.0.17",
+    "expo-application": "~58.1.2",
     "expo-build-properties": "~58.0.11",
-    "expo-camera": "~58.0.11",
+    "expo-camera": "~58.0.12",
     "expo-constants": "~58.0.12",
+    "expo-device": "~58.0.5",
     "expo-haptics": "~58.0.7",
-    "expo-linking": "~58.0.13",
-    "expo-router": "~58.0.24",
+    "expo-linking": "~58.0.14",
+    "expo-router": "~58.0.25",
     "expo-secure-store": "~58.0.2",
-    "expo-status-bar": "~58.0.3",
+    "expo-status-bar": "~58.0.4",
     "fast-xml-parser": "^5.11.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.0",
     "react-native-safe-area-context": "~5.10.1",
     "react-native-screens": "~4.30.0",
+    "react-native-svg": "15.16.0",
     "react-native-web": "^0.21.4"
   },
   "devDependencies": {
@@ -33,7 +36,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test": "node --test src/terminal/soap.test.ts src/terminal/supplierConfiguration.test.ts src/terminal/shipmentLookup.test.ts",
+    "test": "node --test src/terminal/soap.test.ts src/terminal/supplierConfiguration.test.ts src/terminal/shipmentLookup.test.ts src/terminal/activation.test.ts src/terminal/outbox.test.ts src/terminal/chat.test.ts src/terminal/pickupPoints.test.ts src/terminal/vehicle.test.ts src/terminal/deliveries.test.ts src/terminal/processes.test.ts src/api/json.test.ts",
     "lint": "expo lint"
   },
   "private": true
